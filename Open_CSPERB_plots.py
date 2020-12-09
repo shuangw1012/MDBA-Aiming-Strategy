@@ -529,43 +529,23 @@ def tower_receiver_plots(files, efficiency=True, maps_3D=True, flux_map=True, fl
 				plt.vlines(x=height,ymin=0,ymax=1500,linestyles='--',linewidth=0.5)
 			D=safety_factor*flux_lims[:-1]-q_net[fp[f]]/areas[fp[f]]/1e3 # difference between flux limits and net flux
 			#print D
-			# for front tubes
-			Index=N.where(D[:n_elems]<0)
-			if Index[0]!=[]:
-				if abs(Index[0][0]-n_elems/2-1)>=abs(Index[0][-1]-n_elems/2-1):
-					boundary_1=Index[0][0]
-					boundary_2=2*(n_elems/2-1)-boundary_1
-				else:
-					boundary_2=Index[0][-1]
-					boundary_1=2*(n_elems/2-1)-boundary_2
-				D_choose=D[boundary_1:boundary_2]
-				index_positive=N.where(D_choose>=0)
-				index_negative=N.where(D_choose<0)
-				Success.append(sum(D_choose[index_positive])+5.*sum(D_choose[index_negative])>0.)
-				if index_negative!=[]:
-					Positive.append(False)
-					A_over=N.append(A_over,-sum(D_choose[index_negative]))
-			else:
-				Positive.append(True)
-				Success.append(True)
-				A_over=N.append(A_over,0.)			
 			
-			if n_banks/len(fp)==2:
-				Index=N.where(D[n_elems:]<0)
-				if Index[0]!=[]:
-					if abs(Index[0][0]-(n_elems/2-1))>=abs(Index[0][-1]-(n_elems/2-1)):
+			for i in range(n_banks/len(fp)):
+				Index=N.where(D[n_elems*i:n_elems*(i+1)]<0) # the index with overflux at the current tube bank
+				if Index[0]!=[]: # if overflux happens
+					if abs(Index[0][0]-n_elems/2-1)>=abs(Index[0][-1]-n_elems/2-1):
 						boundary_1=Index[0][0]
 						boundary_2=2*(n_elems/2-1)-boundary_1
 					else:
 						boundary_2=Index[0][-1]
 						boundary_1=2*(n_elems/2-1)-boundary_2
-					D_choose=D[boundary_1+n_elems:boundary_2+n_elems]
+					D_choose=D[boundary_1+n_elems*i:boundary_2+n_elems*i] # to get the boundaries
 					index_positive=N.where(D_choose>=0)
 					index_negative=N.where(D_choose<0)
-					Success.append(sum(D_choose[index_positive])+5.*sum(D_choose[index_negative])>0.)
+					Success.append(sum(D_choose[index_positive])+5.*sum(D_choose[index_negative])>0.) # for search algorithm
 					if index_negative!=[]:
-						Positive.append(False)
-						A_over=N.append(A_over,-sum(D_choose[index_negative]))				
+						Positive.append(False) # for fit algorithm
+						A_over=N.append(A_over,-sum(D_choose[index_negative])) # crossover extent
 				else:
 					Positive.append(True)
 					Success.append(True)
