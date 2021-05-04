@@ -111,11 +111,15 @@ class one_key_start:
 		Strt=rec.flow_path(option='cmvNib%s'%self.num_fp,fluxmap_file=self.folder+'/flux-table.csv')
 		rec.balance(HC=Na(), material=Inconel740H(), T_in=520+273.15, T_out=740+273.15, T_amb=T_amb+273.15, h_conv_ext='SK', filesave=self.folder+'/flux-table',air_velocity=V_wind)
 		flux_limits_file='%s/201015_N07740_thermoElasticPeakFlux_velocity/N07740_OD%s_WT1.20_peakFlux_vel.csv'%(self.folder,round(self.D0,2))
-		results,aiming_results=tower_receiver_plots(files=self.folder+'/flux-table', efficiency=False, maps_3D=False, flux_map=False, flow_paths=True,saveloc=None, billboard=False, flux_limits_file=flux_limits_file)
+		results,aiming_results,vel_max=tower_receiver_plots(files=self.folder+'/flux-table', efficiency=False, maps_3D=False, flux_map=False, flow_paths=True,saveloc=None, billboard=False, flux_limits_file=flux_limits_file,C_aiming=self.C_aiming)
 		return results,aiming_results,Strt
-		
+
 	def aiming_loop(self,C_aiming,Exp,A_f): # the aiming strategy loop: optical + thermal
 		# the input for optical modelling
+		self.C_aiming=C_aiming
+		print C_aiming
+		print Exp
+		print A_f
 		att_factor=self.attenuation(self.csv_trimmed)
 		aiming(self.folder,self.r_height,self.r_diameter,C_aiming,self.csv_trimmed,self.tower_h,self.num_bundle,Exp,A_f) # change aiming points 
 		self.run_SOLSTICE(dni=self.DNI,phi=self.phi,elevation=self.elevation,att_factor=att_factor,num_rays=5000000,csv=self.csv_aiming) # optical simulation
@@ -124,12 +128,10 @@ class one_key_start:
 		print 'Interception efficiency: ' + str(eff_interception)
 		read_data(self.folder,self.r_height,self.r_diameter,self.num_bundle,self.bins,flux_file=True) # read flux map
 		results,aiming_results,Strt=self.HT_model(20.,0.) # thermal simulation
-		Success=aiming_results[0] # to judge the convergence for search algorithm
-		Positive=aiming_results[1] # to judge the convergence for the whole aiming strategy
-		A_over=aiming_results[2] # the crossover extent
-		print Success
-		print Positive
-		return Success,Positive,eff_interception,A_over,Strt
+		#print aiming_results[0]
+		print aiming_results[1]
+		
+		return aiming_results,eff_interception,Strt
 	
 	def search_algorithm(self): # parametric study of aiming extent
 		C_aiming=np.zeros(self.num_bundle) # aiming extent
@@ -139,7 +141,7 @@ class one_key_start:
 		A_f=np.zeros(self.num_bundle) # asymmetry factor
 		A_f[:int(0.25*self.num_bundle)]=A_f[int(0.75*self.num_bundle):]=0.67 # initiliasing asymmetry factor
 		A_f[int(0.25*self.num_bundle):int(0.75*self.num_bundle)]=0.33
-		Success,Positive,eff_interception,A_over,Strt=self.aiming_loop(C_aiming,Exp,A_f)
+		aiming_results,eff_interception,Strt=self.aiming_loop(C_aiming,Exp,A_f)
 		
 		# to output eff_interception at equatorial aiming
 		savedir='%s/Equatorial_interception.csv' % self.folder
@@ -150,19 +152,19 @@ class one_key_start:
 		
 		# search algorithm
 		C_aiming[:]=0.5
-		Success,Positive,eff_interception,A_over,Strt=self.aiming_loop(C_aiming,Exp,A_f)
-		while np.all(Success)==False and np.all(C_aiming<1.):
+		aiming_results,eff_interception,Strt=self.aiming_loop(C_aiming,Exp,A_f)
+		while np.all(aiming_results[0])==False and np.all(C_aiming<1.):
 			for i in range(self.num_bundle):
-				if Success[i]==False:
+				if aiming_results[0][i]==False:
 					C_aiming[Strt[i]]+=0.05
 					if Strt[i]==self.num_bundle-1:
 						C_aiming[0]+=0.05
 					else:
 						C_aiming[Strt[i]+1]+=0.05
 					C_aiming[Strt[i]-1]+=0.05
-			Success,Positive,eff_interception,A_over,Strt=self.aiming_loop(C_aiming,Exp,A_f)
+			aiming_results,eff_interception,Strt=self.aiming_loop(C_aiming,Exp,A_f)
 			print C_aiming
-			print Success
+			print aiming_results[0]
 		
 		# to output the results of search algorithm
 		savedir='%s/Search_results.csv' % self.folder
@@ -182,7 +184,7 @@ class one_key_start:
 		A_f=np.zeros(self.num_bundle)
 		A_f[:int(0.25*self.num_bundle)]=A_f[int(0.75*self.num_bundle):]=0.67
 		A_f[int(0.25*self.num_bundle):int(0.75*self.num_bundle)]=0.33
-		Success,Positive,eff_interception,A_over,Strt=self.aiming_loop(C_aiming,Exp,A_f)
+		aiming_results,eff_interception,Strt=self.aiming_loop(C_aiming,Exp,A_f)
 
 		#The optimisation uses Dakota from Sandia. Dakota is activated by running the dakota input file GA.in from os.system.
 		#Dakota has an interface with python code, which is programmed in Dakota_interface.py.
@@ -291,7 +293,7 @@ class one_key_start:
 		
 		# ready for optimisation
 		for i in range(self.num_bundle):
-			if A_over[i]==0.:
+			if aiming_results[2][i]==0.:
 				continue
 			print i,int(i/2)+1,i%2+1
 			Tube=Strt
@@ -308,7 +310,7 @@ class one_key_start:
 					line = "	A_f_%s_%s=A_f[%s]=%s\n" % (int(i/2)+1,i%2+1,Tube[i],'x[1]')
 					w_str+=line
 				elif re.search('gx=',line):
-					line = "	gx=A_over[%s]\n" % i # change the objective function to the crossover extent at the current tube bank
+					line = "	gx=aiming_results[2][%s]\n" % i # change the objective function to the crossover extent at the current tube bank
 					w_str+=line
 				else:
 					w_str+=line
@@ -374,24 +376,24 @@ class one_key_start:
 		C_aiming=Results[0]
 		Exp=Results[1]
 		A_f=Results[2]
-		Success,Positive,eff_interception,A_over,Strt=self.aiming_loop(C_aiming,Exp,A_f)
-		print A_over[:16]
+		aiming_results,eff_interception,Strt=self.aiming_loop(C_aiming,Exp,A_f)
+		print aiming_results[2][:16]
 		print eff_interception
 		# adjustment algorithm
-		while (not np.all(A_over<10.)):
+		while (not np.all(aiming_results[2]<10.)):
 			for i in range(self.num_bundle):
-				if Positive[i]==False:
+				if aiming_results[1][i]==False:
 					C_aiming[Strt[i]]+=0.05
 					if Strt[i]==self.num_bundle-1:
 						C_aiming[0]+=0.05
 					else:
 						C_aiming[Strt[i]+1]+=0.05
 					C_aiming[Strt[i]-1]+=0.05
-			Success,Positive,eff_interception,A_over,Strt=self.aiming_loop(C_aiming,Exp,A_f)
+			aiming_results,eff_interception,Strt=self.aiming_loop(C_aiming,Exp,A_f)
 			print C_aiming
 			print Exp
 			print A_f
-			print A_over
+			print aiming_results[2]
 			print eff_interception
 			
 		# to output the final results
@@ -430,8 +432,8 @@ class one_key_start:
 			pos_and_aiming_new=pos_and_aiming_new.reshape(len(pos_and_aiming_new)/7, 7)
 			np.savetxt(csv, pos_and_aiming_new, fmt='%s', delimiter=',')
 			
-			Success,Positive,eff_interception,A_over,Strt=Model.aiming_loop(C_aiming,Exp,A_f)
-			print A_over[:16]
+			aiming_results,eff_interception,Strt=self.aiming_loop(C_aiming,Exp,A_f)
+			print aiming_results[2][:16]
 			print eff_interception
 		
 	def annual_aiming(self): # the get look-up tables after running MDBA optimisation at discretised points
@@ -614,7 +616,7 @@ class one_key_start:
 		Omega=np.linspace(-60., 60., num=10)
 		Validation_results=np.full((5,10), False, dtype=bool) # boolean array for validation results
 		sun=SunPosition()
-		A_over=np.array([0.,20.])
+		#A_over=np.array([0.,20.])
 		for i in range(5):
 			for j in range(10):
 				daytime,sunrise=sun.solarhour(Delta[i], self.latitude)
@@ -631,8 +633,8 @@ class one_key_start:
 				C_aiming=Results[0]
 				Exp=Results[1]
 				A_f=Results[2]
-				Success,Positive,eff_interception,A_over,Strt=self.aiming_loop(C_aiming,Exp,A_f)
-				if np.all(A_over<10.)==True: # Very small deviation is allowed here.
+				aiming_results,eff_interception,Strt=self.aiming_loop(C_aiming,Exp,A_f)
+				if np.all(aiming_results[2]<10.)==True: # Very small deviation is allowed here.
 					Validation_results[i,j]=True
 		print Validation_results
 	
@@ -657,6 +659,53 @@ class one_key_start:
 		I=I0*0.7**(AM**0.678)
 		return I
 	
+	def New_search_algorithm(self):  # the net one-key algorithm to get the optimised aiming points
+		C_aiming=np.zeros(self.num_bundle) # aiming extent
+		C_aiming[:]=0. # equatorial aiming
+		Exp=np.zeros(self.num_bundle) # shape exponent
+		Exp[:]=2.0 # initialising exponent
+		A_f=np.zeros(self.num_bundle) # asymmetry factor
+		if self.num_bundle/self.num_fp == 1:
+			A_f[:]=0.75
+		elif self.num_bundle/self.num_fp == 2:
+			A_f[:int(0.25*self.num_bundle)]=A_f[int(0.75*self.num_bundle):]=0.67
+			A_f[int(0.25*self.num_bundle):int(0.75*self.num_bundle)]=0.33
+		
+		# new search algorithm
+		C_aiming[:]=0.5
+		aiming_results,eff_interception,Strt=self.aiming_loop(C_aiming,Exp,A_f)
+		gap=0.05
+		while np.all(aiming_results[1])==False and np.all(C_aiming<1.):
+			# for E
+			C_aiming_old=np.ones(self.num_bundle)
+			C_aiming_old[:]=C_aiming[:]
+			for i in range(self.num_bundle):
+				if aiming_results[1][i]==False:
+					C_aiming[Strt[i]]+=gap
+					if Strt[i]==self.num_bundle-1:
+						C_aiming[0]+=gap
+					else:
+						C_aiming[Strt[i]+1]+=gap
+					C_aiming[Strt[i]-1]+=gap
+				# for A
+				if A_f[Strt[i]]>0.5:
+					if (aiming_results[3][i]-aiming_results[4][i])/abs(aiming_results[4][i])<-0.1:
+						A_f[Strt[i]]+=0.02
+					elif (aiming_results[3][i]-aiming_results[4][i])/abs(aiming_results[4][i])>0.1:
+						A_f[Strt[i]]-=0.02
+				else:
+					if (aiming_results[3][i]-aiming_results[4][i])/abs(aiming_results[4][i])<-0.1:
+						A_f[Strt[i]]-=0.02
+					elif (aiming_results[3][i]-aiming_results[4][i])/abs(aiming_results[4][i])>0.1:
+						A_f[Strt[i]]+=0.02
+				# for S
+				if aiming_results[5][i]>0.55:
+					Exp[Strt[i]]-=0.2
+				elif aiming_results[5][i]<0.45:
+					Exp[Strt[i]]+=0.2
+			C_aiming[C_aiming-C_aiming_old>gap]=C_aiming_old[C_aiming-C_aiming_old>gap]+gap
+			aiming_results,eff_interception,Strt=self.aiming_loop(C_aiming,Exp,A_f)
+	
 if __name__=='__main__':
 	from sys import path
 	folder=path[0]
@@ -675,6 +724,7 @@ if __name__=='__main__':
 	#Model.fit_algorithm()
 	#Model.adjust_algorithm()
 	#Model.annual_aiming()
-	Model.check()
+	#Model.check()
 	#Model.interpolation(delta=23.0,omega=20.0)
 	#Model.varying_DNI(delta=23.0,omega=20.0,factor=1.2)
+	Model.New_search_algorithm()

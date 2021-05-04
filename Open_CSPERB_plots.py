@@ -7,6 +7,8 @@ from mpl_toolkits.mplot3d import Axes3D
 from matplotlib import cm
 from matplotlib import colors
 from scipy.interpolate import interp2d
+from pandas import DataFrame
+from sklearn import linear_model
 
 def flux_limits(mf, Ts, flux_limits_file):
 	# Net flux limits in W.m2 for Ts in K and for mass flows of 1 to 5 kg/s in OD 60.3 mm 740H pipes with 1.2 mm wall thickness.
@@ -27,8 +29,8 @@ def flux_limits_V(V, Ts, flux_limits_file):
 	fit = interp2d(Vs, Tdata, fluxlimdata)
 	flux_lim = fit(V, Ts)
 	return flux_lim[:,0]
-
-def tower_receiver_plots(files, efficiency=True, maps_3D=True, flux_map=True, flow_paths=True, saveloc=None, billboard=False, flux_limits_file=None):
+	
+def tower_receiver_plots(files, efficiency=True, maps_3D=True, flux_map=True, flow_paths=True, saveloc=None, billboard=False, flux_limits_file=None,C_aiming=None):
 	print "plotting"
 	fileo = open(files,'r')
 	data = pickle.load(fileo)
@@ -80,7 +82,7 @@ def tower_receiver_plots(files, efficiency=True, maps_3D=True, flux_map=True, fl
 	n_tubes = data['n_tubes']
 	Dp = data['Dp'] 
 	pipe_lengths = data['pipe_lengths']
-
+	Strt=data['Strt']
 	#maxheight = N.amax(ahr[:,1,:])
 	#maxrad = N.amax(ahr[:,2,:])
 	
@@ -89,8 +91,15 @@ def tower_receiver_plots(files, efficiency=True, maps_3D=True, flux_map=True, fl
 	print 'Receiver efficiency: '+str(eff_rec)
 	# Qin, eff_abs,eff_ems,T_ext_mean,h_ext,q_refl,q_emi,q_conv,eff_rec
 	#print T_ext
-	#print N.sum(q_ref)/1e6,N.sum(q_rad)/1e6,N.sum(q_conv)/1e6
+	#print N.average(T_ext),N.sqrt(N.sqrt(N.average(T_ext**4))),h_conv_ext
 	results=[N.sum(fluxmap*areas[ahr_map])/1e6,eff_abs,eff_ems,N.average(T_ext),N.sqrt(N.sqrt(N.average(T_ext**4))),h_conv_ext,N.sum(q_ref)/1e6,N.sum(q_rad)/1e6,N.sum(q_conv)/1e6,eff_rec]
+	
+	vel_max=N.array([])
+	for f in xrange(len(fp)):
+		vels = m[f]/n_tubes[fp[f]]/(N.pi*(D_tubes_i/2.)**2.*HC.rho(T_HC[f][1:]))
+		#print m[f],HC.rho(T_HC[f][1:]),vels
+		vel_max=N.append(vel_max,N.amax(vels))
+	#print vel_max
 	
 	if efficiency:
 		#print 'Radius:', radius,' m'
@@ -122,7 +131,7 @@ def tower_receiver_plots(files, efficiency=True, maps_3D=True, flux_map=True, fl
 		for f in range(len(fp)):
 			mfp = m[f]*N.ones(len(n_tubes[fp[f]]))
 			nts = N.array(n_tubes[fp[f]])
-			flux_lims = flux_limits_V(V[f], T_HC[f], flux_limits_file)/1e3
+			flux_lims = flux_limits(mfp/nts, T_HC[f], flux_limits_file)/1e3
 			flux_fp = q_net[fp[f]]/areas[fp[f]]/1e3
 			flux_fp = N.hstack((flux_fp[0], flux_fp))
 			print N.around(N.amax(N.hstack(flux_fp/flux_lims)), decimals=3),
@@ -155,11 +164,11 @@ def tower_receiver_plots(files, efficiency=True, maps_3D=True, flux_map=True, fl
 		print "Qcon:", N.sum(fluxmap*areas[ahr_map])
 		print 'Tin:',T_in,' Tout:',T_out
 		print 'Peak fraction of allowable: ',  	
-		Fraction=[]
+		Fraction=[]		
 		for f in range(len(fp)):
 			mfp = m[f]*N.ones(len(n_tubes[fp[f]]))
 			nts = N.array(n_tubes[fp[f]])
-			flux_lims = flux_limits_V(V[f], T_HC[f], flux_limits_file)/1e3
+			flux_lims = flux_limits(mfp/nts, T_HC[f], flux_limits_file)/1e3
 			flux_fp = q_net[fp[f]]/areas[fp[f]]/1e3
 			flux_fp = N.hstack((flux_fp[0], flux_fp))
 			print N.around(N.amax(N.hstack(flux_fp/flux_lims)), decimals=3),
@@ -205,10 +214,10 @@ def tower_receiver_plots(files, efficiency=True, maps_3D=True, flux_map=True, fl
 		zcard = N.amax(height)+0.5
 
 		ax.scatter(xs=[0,rcard,0,-rcard], ys=[rcard,0,-rcard,0], zs=[zcard,zcard,zcard,zcard], s=150, c=N.tile([1,1,1,0.5],(4,1)), lw=0, zorder=9999.)
-		ax.text(-rcard,0,zcard, s='W', zorder=10000., ha='center', va='center')
-		ax.text(0,rcard,zcard, s='N', zorder=10000., ha='center', va='center')
-		ax.text(rcard,0,zcard, s='E', zorder=10000., ha='center', va='center')
-		ax.text(0,-rcard,zcard, s='S', zorder=10000., ha='center', va='center')
+		ax.text(-rcard,0,zcard, s='N', zorder=10000., ha='center', va='center')
+		ax.text(0,rcard,zcard, s='E', zorder=10000., ha='center', va='center')
+		ax.text(rcard,0,zcard, s='S', zorder=10000., ha='center', va='center')
+		ax.text(0,-rcard,zcard, s='W', zorder=10000., ha='center', va='center')
 
 		ax.set_xlim(-radius, radius)
 		ax.set_ylim(-radius, radius)
@@ -224,7 +233,6 @@ def tower_receiver_plots(files, efficiency=True, maps_3D=True, flux_map=True, fl
 		plt.figtext(0.25, 0.01, '(a)')
 		plt.savefig(open(saveloc+'_3D_maps.png','w'), dpi=400)
 		plt.clf()
-		plt.close(fig)
 		ax = fig.add_subplot(1,2,2, projection='3d', aspect=1.3)
 
 		flux = T_ext[N.hstack(ahr_map)]
@@ -254,10 +262,10 @@ def tower_receiver_plots(files, efficiency=True, maps_3D=True, flux_map=True, fl
 				surf = ax.plot_surface(x, y, z, shade=False, antialiased=False, color=face, edgecolor=face, linewidth=0.5,  alpha=1)
 
 		ax.scatter(xs=[0,rcard,0,-rcard], ys=[rcard,0,-rcard,0], zs=[zcard,zcard,zcard,zcard], s=150, c=N.tile([1,1,1,0.5],(4,1)), lw=0, zorder=9999.)
-		ax.text(-rcard,0,zcard, s='W', zorder=10000., ha='center', va='center')
-		ax.text(0,rcard,zcard, s='N', zorder=10000., ha='center', va='center')
-		ax.text(rcard,0,zcard, s='E', zorder=10000., ha='center', va='center')
-		ax.text(0,-rcard,zcard, s='S', zorder=10000., ha='center', va='center')
+		ax.text(-rcard,0,zcard, s='N', zorder=10000., ha='center', va='center')
+		ax.text(0,rcard,zcard, s='E', zorder=10000., ha='center', va='center')
+		ax.text(rcard,0,zcard, s='S', zorder=10000., ha='center', va='center')
+		ax.text(0,-rcard,zcard, s='W', zorder=10000., ha='center', va='center')
 
 		ax.set_xlim(-radius, radius)
 		ax.set_ylim(-radius, radius)
@@ -322,10 +330,10 @@ def tower_receiver_plots(files, efficiency=True, maps_3D=True, flux_map=True, fl
 		zcard = N.amax(height)+0.5
 
 		ax.scatter(xs=[0,rcard,0,-rcard], ys=[rcard,0,-rcard,0], zs=[zcard,zcard,zcard,zcard], s=150, c=N.tile([1,1,1,0.5],(4,1)), lw=0, zorder=9999.)
-		ax.text(-rcard,0,zcard, s='W', zorder=10000., ha='center', va='center')
-		ax.text(0,rcard,zcard, s='N', zorder=10000., ha='center', va='center')
-		ax.text(rcard,0,zcard, s='E', zorder=10000., ha='center', va='center')
-		ax.text(0,-rcard,zcard, s='S', zorder=10000., ha='center', va='center')
+		ax.text(-rcard,0,zcard, s='N', zorder=10000., ha='center', va='center')
+		ax.text(0,rcard,zcard, s='E', zorder=10000., ha='center', va='center')
+		ax.text(rcard,0,zcard, s='S', zorder=10000., ha='center', va='center')
+		ax.text(0,-rcard,zcard, s='W', zorder=10000., ha='center', va='center')
 
 		ax.set_xlim(-radius, radius)
 		ax.set_ylim(-radius, radius)
@@ -340,7 +348,7 @@ def tower_receiver_plots(files, efficiency=True, maps_3D=True, flux_map=True, fl
 
 		plt.savefig(open(saveloc+'_3D_flux.png','w'), dpi=400)
 		plt.clf()
-		plt.close(fig)
+
 		fig = plt.figure(figsize=(3,3.4), dpi=1000)
 		plt.subplots_adjust(left=0., bottom=0.06, top =1.02, right=1.01, wspace=0)
 	
@@ -386,10 +394,10 @@ def tower_receiver_plots(files, efficiency=True, maps_3D=True, flux_map=True, fl
 		zcard = N.amax(height)+0.5
 
 		ax.scatter(xs=[0,rcard,0,-rcard], ys=[rcard,0,-rcard,0], zs=[zcard,zcard,zcard,zcard], s=150, c=N.tile([1,1,1,0.5],(4,1)), lw=0, zorder=9999.)
-		ax.text(-rcard,0,zcard, s='W', zorder=10000., ha='center', va='center')
-		ax.text(0,rcard,zcard, s='N', zorder=10000., ha='center', va='center')
-		ax.text(rcard,0,zcard, s='E', zorder=10000., ha='center', va='center')
-		ax.text(0,-rcard,zcard, s='S', zorder=10000., ha='center', va='center')
+		ax.text(-rcard,0,zcard, s='N', zorder=10000., ha='center', va='center')
+		ax.text(0,rcard,zcard, s='E', zorder=10000., ha='center', va='center')
+		ax.text(rcard,0,zcard, s='S', zorder=10000., ha='center', va='center')
+		ax.text(0,-rcard,zcard, s='W', zorder=10000., ha='center', va='center')
 
 		ax.set_xlim(-radius, radius)
 		ax.set_ylim(-radius, radius)
@@ -404,7 +412,7 @@ def tower_receiver_plots(files, efficiency=True, maps_3D=True, flux_map=True, fl
 
 		plt.savefig(open(saveloc+'_3D_T.png','w'), dpi=400)
 		plt.clf()
-		plt.close(fig)
+		
 		fig = plt.figure(figsize=(3,3.4), dpi=1000)
 		plt.subplots_adjust(left=0., bottom=0.06, top =1.02, right=1.01, wspace=0)
 	
@@ -450,10 +458,10 @@ def tower_receiver_plots(files, efficiency=True, maps_3D=True, flux_map=True, fl
 		zcard = N.amax(height)+0.5
 
 		ax.scatter(xs=[0,rcard,0,-rcard], ys=[rcard,0,-rcard,0], zs=[zcard,zcard,zcard,zcard], s=150, c=N.tile([1,1,1,0.5],(4,1)), lw=0, zorder=9999.)
-		ax.text(-rcard,0,zcard, s='W', zorder=10000., ha='center', va='center')
-		ax.text(0,rcard,zcard, s='N', zorder=10000., ha='center', va='center')
-		ax.text(rcard,0,zcard, s='E', zorder=10000., ha='center', va='center')
-		ax.text(0,-rcard,zcard, s='S', zorder=10000., ha='center', va='center')
+		ax.text(-rcard,0,zcard, s='N', zorder=10000., ha='center', va='center')
+		ax.text(0,rcard,zcard, s='E', zorder=10000., ha='center', va='center')
+		ax.text(rcard,0,zcard, s='S', zorder=10000., ha='center', va='center')
+		ax.text(0,-rcard,zcard, s='W', zorder=10000., ha='center', va='center')
 
 		ax.set_xlim(-radius, radius)
 		ax.set_ylim(-radius, radius)
@@ -468,26 +476,22 @@ def tower_receiver_plots(files, efficiency=True, maps_3D=True, flux_map=True, fl
 
 		plt.savefig(open(saveloc+'_3D_Q-net.png','w'), dpi=400)
 		plt.clf()
-		plt.close(fig)
-	
+
 	if flow_paths:
+		'''
+		fig = plt.figure(figsize=(8*2,(2.+(len(fp)-1)*1.1)/1.7), dpi=1000)
 		bot=0.08
 		top=0.93
-		'''
-		fig = plt.figure(figsize=(4,2.+(len(fp)-1)*1.), dpi=1000)
-		if len(fp)==1:
-			bot=0.1
-			top=0.93
 		
 		plt.subplots_adjust(left=0.5, bottom=bot, right=0.95, top = top)
 		for f in xrange(len(fp)):
-			plt.subplot(len(fp),1,f+1)
+			plt.subplot(int(len(fp)/4),4,f+1)
 			if len(fp)>1:
 				plt.text(x=1, y=660, s='Flow path %s'%str(f+1), va='top')
 			bank_lengths = pipe_lengths[f]
 			bank_lengths_2 = (bank_lengths[1:]+bank_lengths[:-1])/2.
-			#plt.plot(bank_lengths_2, T_ext[fp[f]]-273.15, label=r'T${_\mathrm{abs}}$', color='0')
-			#plt.plot(bank_lengths_2, T_w_int[fp[f]]-273.15, label=r'T${_\mathrm{wall,int}}$', color='0.4')
+			plt.plot(bank_lengths_2, T_ext[fp[f]]-273.15, label=r'T${_\mathrm{abs}}$', color='0')
+			plt.plot(bank_lengths_2, T_w_int[fp[f]]-273.15, label=r'T${_\mathrm{wall,int}}$', color='0.4')
 			plt.plot(bank_lengths, T_HC[f]-273.15, label=r'T${_\mathrm{HC}}$', color='0.6')
 			plt.xlim(xmax=bank_lengths[-1])
 
@@ -496,10 +500,12 @@ def tower_receiver_plots(files, efficiency=True, maps_3D=True, flux_map=True, fl
 
 		plt.subplot(len(fp),1,1)
 		plt.legend(loc=3,ncol=3, borderaxespad=0, bbox_to_anchor=(0.,1.05))
-		'''
+
 		#plt.savefig(open(saveloc+'_Temp_fp.png','w'), dpi=400)
 		#plt.close(fig)
-
+		'''
+		bot=0.08
+		top=0.93
 		if n_banks/len(fp)==2:
 			fig = plt.figure(figsize=(4*2,(2.+(len(fp)-1)*1.1)/1.7), dpi=1000)
 		else: 
@@ -509,48 +515,98 @@ def tower_receiver_plots(files, efficiency=True, maps_3D=True, flux_map=True, fl
 		Positive=[]
 		safety_factor=0.9
 		A_over=N.array([])
+		C_safe=N.array([])
+		C_net=N.array([])
+		S_ratio=N.array([])
 		for f in xrange(len(fp)):
 			bank_lengths = pipe_lengths[f]
 			bank_lengths_2 = (bank_lengths[1:]+bank_lengths[:-1])/2.
 			if n_banks/len(fp)==2:
 				ax=plt.subplot(int(len(fp)/2),2,f+1)
 				size=12
+				plt.text(x=bank_lengths[30], y=1300, s='T%s'%(Strt[2*f]+1), ha='right',fontsize=size)
+				plt.text(x=bank_lengths[80], y=1000, s='T%s'%(Strt[2*f+1]+1), ha='right',fontsize=size)
 			else:
 				ax=plt.subplot(int(len(fp)/4),4,f+1)
 				size=18
+				plt.text(x=bank_lengths[30], y=1300, s='T%s'%Strt[f], ha='right',fontsize=size)
+				
 			if len(fp)>1:
-				plt.text(x=bank_lengths[-5], y=1000, s='Flow path %s'%str(f+1), ha='right',fontsize=size)
+				plt.text(x=bank_lengths[n_elems], y=1100, s='Fp %s'%str(f+1), ha='right',fontsize=size)
+			
 			plt.plot(bank_lengths_2, q_net[fp[f]]/areas[fp[f]]/1e3, label=r'${\dot{q}^{\prime \prime}_\mathrm{abs}}$', color='0.6')
 			flux_lims = flux_limits_V(V[f], T_HC[f], flux_limits_file)/1e3
 			safe_flux_lims = safety_factor*flux_lims
 			plt.plot(bank_lengths, flux_lims, color='r',linewidth=1.,label=r'${\dot{q}^{\prime \prime}_\mathrm{limit}}$')
 			plt.plot(bank_lengths, safe_flux_lims, color='r',linestyle='--',linewidth=1.,label=r'${\dot{q}^{\prime \prime}_\mathrm{safe}}$')
+			Q_net=q_net[fp[f]]/areas[fp[f]]/1e3
 			if n_banks/len(fp)==2:
 				plt.vlines(x=height,ymin=0,ymax=1500,linestyles='--',linewidth=0.5)
 			D=safety_factor*flux_lims[:-1]-q_net[fp[f]]/areas[fp[f]]/1e3 # difference between flux limits and net flux
-			#print D
-			
-			for i in range(n_banks/len(fp)):
-				Index=N.where(D[n_elems*i:n_elems*(i+1)]<0) # the index with overflux at the current tube bank
-				if Index[0]!=[]: # if overflux happens
+			num_pass=n_banks/len(fp)
+			for i in range(num_pass):
+				Q_net_part=Q_net[n_elems*i:n_elems*(i+1)]
+				Q_safe_part=safe_flux_lims[n_elems*i:n_elems*(i+1)]
+				bank_lengths_part=bank_lengths[n_elems*i:n_elems*(i+1)]
+				X_linear=N.arange(n_elems)
+				LB2=-C_aiming[Strt[f*num_pass+i]]*n_elems*0.25+n_elems/2-1
+				RB2=C_aiming[Strt[f*num_pass+i]]*n_elems*0.25+n_elems/2-1
+				# linear regression to get slopes
+				if LB2==RB2:
+					continue
+				Data={'X_linear': bank_lengths_part[int(LB2):int(RB2)], 'Q_safe_part': Q_safe_part[int(LB2):int(RB2)]}
+				df = DataFrame(Data,columns=['X_linear','Q_safe_part'])
+				X = df[['X_linear']]
+				Y = df['Q_safe_part']
+				regr = linear_model.LinearRegression()
+				regr.fit(X, Y)
+				C0=regr.intercept_
+				C=regr.coef_
+				C_safe=N.append(C_safe,C)
+				
+				Data={'X_linear': bank_lengths_part[int(LB2):int(RB2)], 'Q_net_part': Q_net_part[int(LB2):int(RB2)]}
+				df = DataFrame(Data,columns=['X_linear','Q_net_part'])
+				X = df[['X_linear']] 
+				Y = df['Q_net_part']
+				regr = linear_model.LinearRegression()
+				regr.fit(X, Y)
+				C0_1=regr.intercept_
+				C_1=regr.coef_
+				C_net=N.append(C_net,C_1)
+				
+				# calculation of Aover
+				D_part=D[n_elems*i:n_elems*(i+1)] # for this tube bank
+				Index=N.where(D_part<0)
+				if Index[0]!=[]:
 					if abs(Index[0][0]-n_elems/2-1)>=abs(Index[0][-1]-n_elems/2-1):
 						boundary_1=Index[0][0]
 						boundary_2=2*(n_elems/2-1)-boundary_1
 					else:
 						boundary_2=Index[0][-1]
 						boundary_1=2*(n_elems/2-1)-boundary_2
-					D_choose=D[boundary_1+n_elems*i:boundary_2+n_elems*i] # to get the boundaries
+					D_choose=D_part[boundary_1:boundary_2]
 					index_positive=N.where(D_choose>=0)
 					index_negative=N.where(D_choose<0)
-					Success.append(sum(D_choose[index_positive])+5.*sum(D_choose[index_negative])>0.) # for search algorithm
+					index_negative2=N.where(D_part<0)
+					Success.append(sum(D_choose[index_positive])+5.*sum(D_choose[index_negative])>0.)
 					if index_negative!=[]:
-						Positive.append(False) # for fit algorithm
-						A_over=N.append(A_over,-sum(D_choose[index_negative])) # crossover extent
+						Positive.append(False)
+						A_over=N.append(A_over,-sum(D_choose[index_negative]))
 				else:
 					Positive.append(True)
 					Success.append(True)
-					A_over=N.append(A_over,0.)
-			#plt.hlines(y=0., xmin=0., xmax=N.amax(bank_lengths_2), lw=0.5)
+					A_over=N.append(A_over,0.)	
+					index_negative2=N.array([])
+				
+				# for shape exponent
+				index_negative2=N.asarray(index_negative2)
+				if index_negative2!=[]:
+					index_negative2=index_negative2[0]
+					#print f,i,LB2,RB2,-sum(D_part[index_negative2[N.logical_and(index_negative2>=LB2, index_negative2<RB2)]]),-sum(D_part[index_negative2])
+					S_ratio=N.append(S_ratio,-sum(D_part[index_negative2[N.logical_and(index_negative2>=LB2, index_negative2<RB2)]])/-sum(D_part[index_negative2]))
+				else:
+					S_ratio=N.append(S_ratio,0.5)
+					
 			if n_banks/len(fp)==2:
 				if f%2==0:
 					plt.ylabel('Flux (kW.m$^{-2}$)',fontsize=size)
@@ -567,12 +623,11 @@ def tower_receiver_plots(files, efficiency=True, maps_3D=True, flux_map=True, fl
 					plt.xlabel('Flow path length (m)',fontsize=size)
 			ax.tick_params(axis='both', which='major', labelsize=size,direction='in')
 			ax.locator_params(nbins=5)
-		#plt.xlabel('Flow path length [m]')
 		plt.savefig(open(saveloc+'_flux_fp.png','w'), dpi=400)
-		#plt.clf()
 		plt.close(fig)
-		aiming_results=[Success,Positive,A_over]
-	return results,aiming_results
+		plt.clf()
+		aiming_results=[Success,Positive,A_over,C_safe,C_net,S_ratio]
+	return results,aiming_results,vel_max
 
 def flow_path_plot(files='/home/charles/Documents/Boulot/These/Sodium receiver_CMI/ref_case_result_1', fps=[0], saveloc=None, flux_limits_file=None):
 
@@ -689,10 +744,10 @@ def flow_path_plot(files='/home/charles/Documents/Boulot/These/Sodium receiver_C
 		zcard = N.amax(height)+0.5
 
 		rec3Dsnipet.scatter(xs=[0,rcard,0,-rcard], ys=[rcard,0,-rcard,0], zs=[zcard,zcard,zcard,zcard], s=150, c=N.tile([1,1,1,0.7],(4,1)), lw=0, zorder=9999.)
-		rec3Dsnipet.text(-rcard,0,zcard, s='W', zorder=10000., ha='center', va='center')
-		rec3Dsnipet.text(0,rcard,zcard, s='N', zorder=10000., ha='center', va='center')
-		rec3Dsnipet.text(rcard,0,zcard, s='E', zorder=10000., ha='center', va='center')
-		rec3Dsnipet.text(0,-rcard,zcard, s='S', zorder=10000., ha='center', va='center')
+		rec3Dsnipet.text(-rcard,0,zcard, s='N', zorder=10000., ha='center', va='center')
+		rec3Dsnipet.text(0,rcard,zcard, s='E', zorder=10000., ha='center', va='center')
+		rec3Dsnipet.text(rcard,0,zcard, s='S', zorder=10000., ha='center', va='center')
+		rec3Dsnipet.text(0,-rcard,zcard, s='W', zorder=10000., ha='center', va='center')
 
 		rec3Dsnipet.set_xlim(-radius/1.2, radius/1.2)
 		rec3Dsnipet.set_ylim(-radius/1.2, radius/1.2)
@@ -765,10 +820,10 @@ def flow_path_plot(files='/home/charles/Documents/Boulot/These/Sodium receiver_C
 		zcard = N.amax(height)+0.5
 
 		rec3Dsnipet.scatter(xs=[0,rcard,0,-rcard], ys=[rcard,0,-rcard,0], zs=[zcard,zcard,zcard,zcard], s=150, c=N.tile([1,1,1,0.7],(4,1)), lw=0, zorder=9999.)
-		rec3Dsnipet.text(-rcard,0,zcard, s='W', zorder=10000., ha='center', va='center')
-		rec3Dsnipet.text(0,rcard,zcard, s='N', zorder=10000., ha='center', va='center')
-		rec3Dsnipet.text(rcard,0,zcard, s='E', zorder=10000., ha='center', va='center')
-		rec3Dsnipet.text(0,-rcard,zcard, s='S', zorder=10000., ha='center', va='center')
+		rec3Dsnipet.text(-rcard,0,zcard, s='N', zorder=10000., ha='center', va='center')
+		rec3Dsnipet.text(0,rcard,zcard, s='E', zorder=10000., ha='center', va='center')
+		rec3Dsnipet.text(rcard,0,zcard, s='S', zorder=10000., ha='center', va='center')
+		rec3Dsnipet.text(0,-rcard,zcard, s='W', zorder=10000., ha='center', va='center')
 
 		rec3Dsnipet.set_xlim(-radius/1.2, radius/1.2)
 		rec3Dsnipet.set_ylim(-radius/1.2, radius/1.2)
@@ -865,6 +920,8 @@ def flow_path_plot(files='/home/charles/Documents/Boulot/These/Sodium receiver_C
 		plt.savefig(open(saveloc+'_fp_%s.png'%str(flow_path),'w'), dpi=400)
 		plt.clf()
 		plt.close(fig)
+		
+		
 
 def flow_path_plot_billboard(files='/home/charles/Documents/Boulot/These/Sodium receiver_CMI/ref_case_result_1', fps=[0], saveloc=None, flux_limits_file=None):
 
@@ -1194,4 +1251,4 @@ def pipes_differential_heating(flux_table_detailed, receiver):
 
 	plt.savefig(path[0]+'/differential_energy.png', dpi=400)
 	plt.clf()
-	plt.close(fig)
+	

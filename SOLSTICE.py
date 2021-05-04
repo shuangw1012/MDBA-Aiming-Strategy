@@ -344,14 +344,14 @@ class SolsticeScene:
 
 num_rays_1=5000000
 att_factor_1=0.00010783139577227573
-mainfolder_1='/home/admin-shuang/Desktop/Sodium_project/Aiming/New/Design'
+mainfolder_1='/home/admin-shuang/OneDrive/Sodium_project/Aiming/New/Git/git-aiming'
 casefolder='%s/vtk' % mainfolder_1
-csv_1='/home/admin-shuang/Desktop/Sodium_project/Aiming/New/Design/pos_and_aiming_new.csv'
+csv_1='/home/admin-shuang/OneDrive/Sodium_project/Aiming/New/Git/git-aiming/pos_and_aiming_new.csv'
 if not os.path.exists(casefolder):
 	os.makedirs(casefolder)
-azimuth_1=323.79027284755404
-zenith_1=8.883802427976121
-dni_1=384.4457321701746
+azimuth_1=270.0
+zenith_1=55.15
+dni_1=980.0
 r_cyl_1=8.0
 h_cyl_1=24.0
 tower_h_1=175.0
