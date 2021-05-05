@@ -553,6 +553,7 @@ def tower_receiver_plots(files, efficiency=True, maps_3D=True, flux_map=True, fl
 				RB2=C_aiming[Strt[f*num_pass+i]]*n_elems*0.25+n_elems/2-1
 				LB1=int(24.5-C_aiming[8]*0.5*50)
 				RB1=int(24.5+C_aiming[8]*0.5*50)
+				
 				# linear regression to get slopes
 				Data={'X_linear': bank_lengths_part[int(LB1):int(RB1)], 'Q_safe_part': Q_safe_part[int(LB1):int(RB1)]}
 				df = DataFrame(Data,columns=['X_linear','Q_safe_part'])
