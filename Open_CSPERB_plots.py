@@ -551,24 +551,24 @@ def tower_receiver_plots(files, efficiency=True, maps_3D=True, flux_map=True, fl
 				X_linear=N.arange(n_elems)
 				LB2=-C_aiming[Strt[f*num_pass+i]]*n_elems*0.25+n_elems/2-1
 				RB2=C_aiming[Strt[f*num_pass+i]]*n_elems*0.25+n_elems/2-1
+				LB1=int(24.5-C_aiming[8]*0.5*50)
+				RB1=int(24.5+C_aiming[8]*0.5*50)
 				# linear regression to get slopes
-				if LB2==RB2:
-					continue
-				Data={'X_linear': bank_lengths_part[int(LB2):int(RB2)], 'Q_safe_part': Q_safe_part[int(LB2):int(RB2)]}
+				Data={'X_linear': bank_lengths_part[int(LB1):int(RB1)], 'Q_safe_part': Q_safe_part[int(LB1):int(RB1)]}
 				df = DataFrame(Data,columns=['X_linear','Q_safe_part'])
 				X = df[['X_linear']]
 				Y = df['Q_safe_part']
-				regr = linear_model.LinearRegression()
+				regr = linear_model.HuberRegressor()
 				regr.fit(X, Y)
 				C0=regr.intercept_
 				C=regr.coef_
 				C_safe=N.append(C_safe,C)
 				
-				Data={'X_linear': bank_lengths_part[int(LB2):int(RB2)], 'Q_net_part': Q_net_part[int(LB2):int(RB2)]}
+				Data={'X_linear': bank_lengths_part[int(LB1):int(RB1)], 'Q_net_part': Q_net_part[int(LB1):int(RB1)]}
 				df = DataFrame(Data,columns=['X_linear','Q_net_part'])
 				X = df[['X_linear']] 
 				Y = df['Q_net_part']
-				regr = linear_model.LinearRegression()
+				regr = linear_model.HuberRegressor()
 				regr.fit(X, Y)
 				C0_1=regr.intercept_
 				C_1=regr.coef_
